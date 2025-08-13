@@ -1,4 +1,4 @@
-name: Build, WCAG check & Deploy (no sitemap, no lockfile)
+name: Build, WCAG check & Deploy (no sitemap)
 
 on:
   push:
@@ -22,13 +22,13 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install project dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build site
         run: npm run build
 
-      - name: Install pa11y & helpers globally
+      - name: Install pa11y & helpers
         run: npm install -g pa11y wait-on serve
 
       - name: Start local server
