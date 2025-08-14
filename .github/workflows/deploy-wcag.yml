@@ -62,6 +62,7 @@ jobs:
               const relativePath = file.replace(new RegExp(`^${siteDir}/?`), '');
               const url = `http://localhost:3000/${relativePath}`;
               console.log(`\n=== Checking ${url} ===`);
+
               try {
                 const results = await pa11y(url, {
                   standard: 'WCAG2AA',
@@ -72,11 +73,15 @@ jobs:
                 });
 
                 if (results.issues.length > 0) {
-                  console.log(`❌ ${results.issues.length} issues found on ${url}`);
-                  results.issues.forEach(issue => {
-                    console.log(`- [${issue.type}] ${issue.message} (Selector: ${issue.selector})`);
-                  });
                   failed = true;
+                  console.log(`\n❌ ${results.issues.length} issues found on ${url}\n`);
+                  console.log('| Type       | Selector          | Message |');
+                  console.log('|------------|-----------------|---------|');
+                  results.issues.forEach(issue => {
+                    // Escape pipe characters in message
+                    const msg = issue.message.replace(/\|/g, '\\|');
+                    console.log(`| ${issue.type.padEnd(10)} | ${issue.selector.padEnd(15)} | ${msg} |`);
+                  });
                 } else {
                   console.log(`✅ No issues found on ${url}`);
                 }
