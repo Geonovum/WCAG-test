@@ -63,23 +63,35 @@ jobs:
               const url = `http://localhost:3000/${relativePath}`;
               console.log(`\n=== Checking ${url} ===`);
               try {
-                await pa11y(url, {
+                const results = await pa11y(url, {
                   standard: 'WCAG2AA',
                   timeout: 30000,
                   chromeLaunchConfig: {
                     args: ['--no-sandbox', '--disable-setuid-sandbox']
                   }
                 });
+
+                if (results.issues.length > 0) {
+                  console.log(`❌ ${results.issues.length} issues found on ${url}`);
+                  results.issues.forEach(issue => {
+                    console.log(`- [${issue.type}] ${issue.message} (Selector: ${issue.selector})`);
+                  });
+                  failed = true;
+                } else {
+                  console.log(`✅ No issues found on ${url}`);
+                }
+
               } catch (err) {
-                console.error(`Accessibility issues found on ${url}`);
+                console.error(`Error checking ${url}:`, err);
                 failed = true;
               }
             }
+
             if (failed) {
-              console.error("❌ WCAG check failed for one or more pages.");
+              console.error("\n❌ WCAG check failed for one or more pages.");
               process.exit(1);
             } else {
-              console.log("✅ All pages passed WCAG checks.");
+              console.log("\n✅ All pages passed WCAG checks.");
             }
           })();
           EOF
@@ -90,16 +102,3 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: .
-
-      - name: Show GitHub Pages URL
-        run: |
-          REPO_NAME=${GITHUB_REPOSITORY#*/}
-          USER_NAME=${GITHUB_REPOSITORY%/*}
-
-          if [[ "$REPO_NAME" == "$USER_NAME.github.io" ]]; then
-            URL="https://${USER_NAME}.github.io/"
-          else
-            URL="https://${USER_NAME}.github.io/${REPO_NAME}/"
-          fi
-
-          echo "✅ GitHub Pages URL: $URL"
