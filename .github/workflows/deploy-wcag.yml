@@ -30,6 +30,9 @@ jobs:
       - name: Install pa11y & helpers globally
         run: npm install -g pa11y wait-on serve
 
+      - name: Install pa11y locally
+        run: npm install pa11y
+
       - name: Install Puppeteer/Chrome dependencies
         run: |
           sudo apt-get update
