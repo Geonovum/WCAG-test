@@ -1,4 +1,4 @@
-name: WCAG check & Deploy (no build)
+name: WCAG check & Deploy (no build, Puppeteer fix)
 
 on:
   push:
@@ -22,12 +22,54 @@ jobs:
         with:
           node-version: 20
 
-      # Pas "siteDir" aan naar de map waar je HTML staat (bijvoorbeeld "." of "_site" of "public")
+      # Pas "SITE_DIR" aan naar de map waar je HTML staat
+      # Bij GitHub Pages vaak "." (root) of "_site"
       - name: Define site directory
         run: echo "SITE_DIR=." >> $GITHUB_ENV
 
       - name: Install pa11y & helpers globally
         run: npm install -g pa11y wait-on serve
+
+      - name: Install Puppeteer/Chrome dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libasound2 \
+            libatk1.0-0 \
+            libc6 \
+            libcairo2 \
+            libcups2 \
+            libdbus-1-3 \
+            libexpat1 \
+            libfontconfig1 \
+            libgbm1 \
+            libgcc1 \
+            libglib2.0-0 \
+            libgtk-3-0 \
+            libnspr4 \
+            libnss3 \
+            libpango-1.0-0 \
+            libpangocairo-1.0-0 \
+            libstdc++6 \
+            libx11-6 \
+            libx11-xcb1 \
+            libxcb1 \
+            libxcomposite1 \
+            libxcursor1 \
+            libxdamage1 \
+            libxext6 \
+            libxfixes3 \
+            libxi6 \
+            libxrandr2 \
+            libxrender1 \
+            libxss1 \
+            libxtst6 \
+            ca-certificates \
+            fonts-liberation \
+            libappindicator1 \
+            lsb-release \
+            xdg-utils \
+            wget
 
       - name: Start local server
         run: |
