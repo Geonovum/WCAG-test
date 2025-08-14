@@ -1,0 +1,22 @@
+{
+  "name": "package.json",
+  "version": "1.0.0",
+  "description": "Package voor het testen van WCAG",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Geonovum/WCAG-test.git"
+  },
+  "author": "Gerard Wolbers",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Geonovum/WCAG-test/issues"
+  },
+  "homepage": "https://github.com/Geonovum/WCAG-test#readme",
+  "dependencies": {
+    "pa11y": "^9.0.0"
+  }
+}
