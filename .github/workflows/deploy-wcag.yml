@@ -89,4 +89,18 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: . # root repo, want geen build-map
+          publish_dir: .
+          publish_branch: main
+
+      - name: Show GitHub Pages URL
+        run: |
+          REPO_NAME=${GITHUB_REPOSITORY#*/}
+          USER_NAME=${GITHUB_REPOSITORY%/*}
+
+          if [[ "$REPO_NAME" == "$USER_NAME.github.io" ]]; then
+            URL="https://${USER_NAME}.github.io/"
+          else
+            URL="https://${USER_NAME}.github.io/${REPO_NAME}/"
+          fi
+
+          echo "✅ GitHub Pages URL: $URL"
