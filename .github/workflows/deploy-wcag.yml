@@ -1,43 +1,57 @@
-name: WCAG Check + Build & Deploy to GitHub Pages
+name: WCAG check and deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  wcag-build-deploy:
+  wcag-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      # 1️⃣ Checkout repository
-      - uses: actions/checkout@v3
-
-      # 2️⃣ Install dependencies
-      - name: Install Node.js
-        uses: actions/setup-node@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          node-version: 18
+          fetch-depth: 0
 
-      - name: Install dependencies
-        run: npm install
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      # 3️⃣ Start local server (indien nodig voor pa11y)
-      - name: Start dev server
-        run: npm start &
+      - name: Install Puppeteer dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 \
+            libfontconfig1 libgbm1 libgcc1 libglib2.0-0 libgtk-3-0 \
+            libnspr4 libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 \
+            libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 \
+            libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 \
+            libxss1 libxtst6 ca-certificates fonts-liberation lsb-release \
+            xdg-utils wget
 
-      - name: Wait for server
-        run: npx wait-on http://localhost:3000
+      - name: Install pa11y locally
+        run: npm install pa11y
 
-      # 4️⃣ WCAG 2.1 AA check
+      - name: Start local server
+        run: |
+          npx serve -s . -l 3000 &
+          sleep 5
+
       - name: Run WCAG 2.1 AA check
         run: |
           node <<'EOF'
           const pa11y = require('pa11y');
           const { execSync } = require('child_process');
 
-          const siteDir = '.';
+          const siteDir = '.'; // root van repo
+
+          // Vind alle HTML-bestanden, maar negeer node_modules, dist, .next en verborgen mappen
           const htmlFiles = execSync(`
             find "${siteDir}" -name "*.html" \
             -not -path "*/node_modules/*" \
@@ -53,8 +67,8 @@ jobs:
           (async () => {
             let failed = false;
             for (const file of htmlFiles) {
-              const relativePath = file.replace(new RegExp(\`^${siteDir}/?\`), '');
-              const url = \`http://localhost:3000/${relativePath}\`;
+              const relativePath = file.replace(new RegExp(`^${siteDir}/?`), '');
+              const url = `http://localhost:3000/${relativePath}`;
               console.log(`\n=== Checking ${url} ===`);
 
               try {
@@ -62,17 +76,18 @@ jobs:
                   standard: 'WCAG2AA',
                   timeout: 30000,
                   chromeLaunchConfig: {
-                    args: ['--no-sandbox','--disable-setuid-sandbox']
+                    args: ['--no-sandbox', '--disable-setuid-sandbox']
                   }
                 });
 
                 if (results.issues.length > 0) {
                   failed = true;
                   console.log(`\n❌ ${results.issues.length} issues found on ${url}\n`);
+                  console.log('| Type       | Selector          | Message |');
+                  console.log('|------------|-----------------|---------|');
                   results.issues.forEach(issue => {
-                    let icon = issue.type === 'error' ? '🛑' : issue.type === 'warning' ? '⚠️' : 'ℹ️';
                     const msg = issue.message.replace(/\|/g, '\\|');
-                    console.log(`${icon} [${issue.type}] ${issue.selector} → ${msg}`);
+                    console.log(`| ${issue.type.padEnd(10)} | ${issue.selector.padEnd(15)} | ${msg} |`);
                   });
                 } else {
                   console.log(`✅ No issues found on ${url}`);
@@ -93,13 +108,9 @@ jobs:
           })();
           EOF
 
-      # 5️⃣ Build site
-      - name: Build site
-        run: npm run build
-
-      # 6️⃣ Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v6
+        if: ${{ success() }}
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build
+          publish_dir: .
