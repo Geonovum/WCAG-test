@@ -50,7 +50,8 @@ jobs:
           const { execSync } = require('child_process');
 
           const siteDir = '.'; // root van repo
-          const htmlFiles = execSync(`find "${siteDir}" -name "*.html"`)
+          // Vind alle HTML-bestanden, maar negeer node_modules, dist en .next
+          const htmlFiles = execSync(`find "${siteDir}" -name "*.html" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.next/*"`)
             .toString()
             .trim()
             .split('\n')
@@ -78,7 +79,6 @@ jobs:
                   console.log('| Type       | Selector          | Message |');
                   console.log('|------------|-----------------|---------|');
                   results.issues.forEach(issue => {
-                    // Escape pipe characters in message
                     const msg = issue.message.replace(/\|/g, '\\|');
                     console.log(`| ${issue.type.padEnd(10)} | ${issue.selector.padEnd(15)} | ${msg} |`);
                   });
