@@ -76,22 +76,46 @@ jobs:
 
       - name: Run WCAG 2.1 AA check for all HTML files
         run: |
-          echo "Searching for HTML files in $SITE_DIR and running WCAG checks..."
-          failed=false
-          for file in $(find "$SITE_DIR" -name "*.html"); do
-            url="http://localhost:3000/${file#${SITE_DIR}/}"
-            echo -e "\n=== Checking $url ==="
-            if ! pa11y "$url" --standard=WCAG2AA --timeout=30000 --chrome-launcher-flags="--no-sandbox,--disable-setuid-sandbox"; then
-              echo "Accessibility issues found on $url"
-              failed=true
-            fi
-          done
-          if [ "$failed" = true ]; then
-            echo "❌ WCAG check failed for one or more pages."
-            exit 1
-          else
-            echo "✅ All pages passed WCAG checks."
-          fi
+          node <<'EOF'
+          const pa11y = require('pa11y');
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+          const path = require('path');
+
+          const siteDir = process.env.SITE_DIR || '.';
+          const htmlFiles = execSync(`find "${siteDir}" -name "*.html"`)
+            .toString()
+            .trim()
+            .split('\n')
+            .filter(Boolean);
+
+          (async () => {
+            let failed = false;
+            for (const file of htmlFiles) {
+              const relativePath = file.replace(new RegExp(`^${siteDir}/?`), '');
+              const url = `http://localhost:3000/${relativePath}`;
+              console.log(`\n=== Checking ${url} ===`);
+              try {
+                await pa11y(url, {
+                  standard: 'WCAG2AA',
+                  timeout: 30000,
+                  chromeLaunchConfig: {
+                    args: ['--no-sandbox', '--disable-setuid-sandbox']
+                  }
+                });
+              } catch (err) {
+                console.error(`Accessibility issues found on ${url}`);
+                failed = true;
+              }
+            }
+            if (failed) {
+              console.error("❌ WCAG check failed for one or more pages.");
+              process.exit(1);
+            } else {
+              console.log("✅ All pages passed WCAG checks.");
+            }
+          })();
+          EOF
 
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
