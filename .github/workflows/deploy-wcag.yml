@@ -81,7 +81,7 @@ jobs:
           for file in $(find "$SITE_DIR" -name "*.html"); do
             url="http://localhost:3000/${file#${SITE_DIR}/}"
             echo -e "\n=== Checking $url ==="
-            if ! pa11y "$url" --standard=WCAG2AA --timeout=30000; then
+            if ! pa11y "$url" --standard=WCAG2AA --timeout=30000 --chrome-launcher-flags="--no-sandbox,--disable-setuid-sandbox"; then
               echo "Accessibility issues found on $url"
               failed=true
             fi
