@@ -1,4 +1,4 @@
-name: Build, WCAG check & Deploy (no sitemap)
+name: WCAG check & Deploy (no build)
 
 on:
   push:
@@ -22,24 +22,24 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install dependencies
-        run: npm ci
+      # Pas "siteDir" aan naar de map waar je HTML staat (bijvoorbeeld "." of "_site" of "public")
+      - name: Define site directory
+        run: echo "SITE_DIR=." >> $GITHUB_ENV
 
-      - name: Install pa11y & helpers
+      - name: Install pa11y & helpers globally
         run: npm install -g pa11y wait-on serve
 
       - name: Start local server
         run: |
-          serve -s dist -l 3000 &
-          npx wait-on http://localhost:3000
+          serve -s "$SITE_DIR" -l 3000 &
+          npx wait-on http://localhost:3000/index.html
 
       - name: Run WCAG 2.1 AA check for all HTML files
         run: |
-          echo "Searching for HTML files and running WCAG checks..."
+          echo "Searching for HTML files in $SITE_DIR and running WCAG checks..."
           failed=false
-          for file in $(find dist -name "*.html"); do
-            # Maak URL relatief aan localhost
-            url="http://localhost:3000/${file#dist/}"
+          for file in $(find "$SITE_DIR" -name "*.html"); do
+            url="http://localhost:3000/${file#${SITE_DIR}/}"
             echo -e "\n=== Checking $url ==="
             if ! pa11y "$url" --standard=WCAG2AA --timeout=30000; then
               echo "Accessibility issues found on $url"
@@ -56,7 +56,7 @@ jobs:
       - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./dist
+          path: ${{ env.SITE_DIR }}
 
   deploy:
     runs-on: ubuntu-latest
