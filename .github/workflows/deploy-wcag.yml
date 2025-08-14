@@ -1,4 +1,4 @@
-name: Build, WCAG check, and Deploy
+name: WCAG check and deploy to GitHub Pages
 
 on:
   push:
@@ -10,10 +10,10 @@ permissions:
   id-token: write
 
 jobs:
-  build-and-test:
+  wcag-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -22,9 +22,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: Install dependencies
-        run: npm ci
 
       - name: Install Puppeteer dependencies
         run: |
@@ -41,9 +38,9 @@ jobs:
       - name: Install pa11y locally
         run: npm install pa11y
 
-      - name: Start server
+      - name: Start local server
         run: |
-          npx serve -s build -l 3000 &
+          npx serve -s . -l 3000 &
           sleep 5
 
       - name: Run WCAG 2.1 AA check
@@ -52,7 +49,7 @@ jobs:
           const pa11y = require('pa11y');
           const { execSync } = require('child_process');
 
-          const siteDir = 'build';
+          const siteDir = '.'; // root van repo
           const htmlFiles = execSync(`find "${siteDir}" -name "*.html"`)
             .toString()
             .trim()
@@ -87,15 +84,9 @@ jobs:
           })();
           EOF
 
-  deploy:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
       - name: Deploy to GitHub Pages
+        if: ${{ success() }}
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./
+          publish_dir: . # root repo, want geen build-map
