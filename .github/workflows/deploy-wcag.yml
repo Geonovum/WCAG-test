@@ -34,7 +34,6 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libasound2 \
             libatk1.0-0 \
             libc6 \
             libcairo2 \
@@ -66,7 +65,7 @@ jobs:
             libxtst6 \
             ca-certificates \
             fonts-liberation \
-            libappindicator1 \
+            libayatana-appindicator1 \
             lsb-release \
             xdg-utils \
             wget
