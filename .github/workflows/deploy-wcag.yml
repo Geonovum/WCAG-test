@@ -67,8 +67,8 @@ jobs:
           (async () => {
             let failed = false;
             for (const file of htmlFiles) {
-              const relativePath = file.replace(new RegExp(\`^${siteDir}/?\`), '');
-              const url = \`http://localhost:3000/${relativePath}\`;
+              const relativePath = file.replace(new RegExp(`^${siteDir}/?`), '');
+              const url = `http://localhost:3000/${relativePath}`;
               console.log(`\n=== Checking ${url} ===`);
 
               try {
