@@ -65,6 +65,7 @@ jobs:
             libxtst6 \
             ca-certificates \
             fonts-liberation \
+            libappindicator1 \
             lsb-release \
             xdg-utils \
             wget
