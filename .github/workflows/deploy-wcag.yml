@@ -50,8 +50,15 @@ jobs:
           const { execSync } = require('child_process');
 
           const siteDir = '.'; // root van repo
-          // Vind alle HTML-bestanden, maar negeer node_modules, dist en .next
-          const htmlFiles = execSync(`find "${siteDir}" -name "*.html" -not -path "*/node_modules/*" -not -path "*/dist/*" -not -path "*/.next/*"`)
+
+          // Vind alle HTML-bestanden, maar negeer node_modules, dist, .next en verborgen mappen
+          const htmlFiles = execSync(`
+            find "${siteDir}" -name "*.html" \
+            -not -path "*/node_modules/*" \
+            -not -path "*/dist/*" \
+            -not -path "*/.next/*" \
+            -not -path "*/.*/*"
+          `)
             .toString()
             .trim()
             .split('\n')
@@ -60,8 +67,8 @@ jobs:
           (async () => {
             let failed = false;
             for (const file of htmlFiles) {
-              const relativePath = file.replace(new RegExp(`^${siteDir}/?`), '');
-              const url = `http://localhost:3000/${relativePath}`;
+              const relativePath = file.replace(new RegExp(\`^${siteDir}/?\`), '');
+              const url = \`http://localhost:3000/${relativePath}\`;
               console.log(`\n=== Checking ${url} ===`);
 
               try {
