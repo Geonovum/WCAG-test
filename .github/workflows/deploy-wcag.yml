@@ -40,7 +40,7 @@ jobs:
             xdg-utils wget
 
       - name: Install pa11y locally
-        run: npm install pa11y
+        run: npm install pa11y cheerio
 
       # 3) Serve de site (statisch, zonder build)
       - name: Start local server
@@ -54,8 +54,9 @@ jobs:
           node <<'EOF'
           const pa11y = require('pa11y');
           const { execSync } = require('child_process');
+          const cheerio = require('cheerio');
 
-          const siteDir = '.'; // pas aan als jouw HTML in submap staat
+          const siteDir = '.'; // pas aan bij submap
           const listCmd = `
             find "${siteDir}" -name "*.html" \
             -not -path "*/node_modules/*" \
@@ -63,88 +64,99 @@ jobs:
             -not -path "*/.next/*" \
             -not -path "*/.*/*"
           `;
-
           const htmlFiles = execSync(listCmd).toString().trim().split('\n').filter(Boolean);
-          if (htmlFiles.length === 0) {
-            console.log('ℹ️ Geen HTML-bestanden gevonden in de geselecteerde map. Controleer siteDir en uitsluitingen.');
-          }
-
           const common = {
             timeout: 30000,
             chromeLaunchConfig: { args: ['--no-sandbox','--disable-setuid-sandbox'] }
           };
+          const wcagConfig = { ...common, standard: 'WCAG2AA', includeWarnings: true, includeNotices: true };
+          const icon = (t) => t === 'error' ? '🛑' : t === 'warning' ? '⚠️' : 'ℹ️';
 
-          // Configs
-          const wcagConfig = {
-            ...common,
-            standard: 'WCAG2AA',
-            includeWarnings: true,
-            includeNotices: true
-          };
+          // Kleine helper om HTML van de live server te halen
+          async function fetchHtml(url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return await res.text();
+          }
 
-          const seoConfig = {
-            ...common,
-            // we gebruiken WCAG baseline en voegen SEO-achtige checks toe
-            standard: 'WCAG2AA',
-            includeWarnings: true,
-            includeNotices: true,
-            rules: [
-              'document-title',      // <title> aanwezig
-              'meta-description',    // <meta name="description">
-              'meta-viewport',       // viewport voor mobile
-              'html-has-lang',       // <html lang="">
-              'html-lang-valid',     // geldige taalcode
-              'image-alt',           // alt-teksten
-              'meta-refresh'         // vermijd meta refresh
-            ]
-          };
+          // Basale SEO-regels:
+          // - <title> aanwezig (error als ontbreekt / leeg)
+          // - <meta name="description"> aanwezig (error als ontbreekt; warning als <50 of >160 chars)
+          // - <html lang> aanwezig (error als ontbreekt; warning als niet op simpele pattern past)
+          // - <meta name="viewport"> aanwezig (warning als ontbreekt)
+          // - <img> zonder alt → warning (tellen en melden)
+          // - <link rel="canonical"> aanbevolen → warning als ontbreekt (optioneel)
+          function seoCheck(url, html) {
+            const $ = cheerio.load(html);
+            const issues = [];
 
-          const iconFor = (t) => t === 'error' ? '🛑' : t === 'warning' ? '⚠️' : 'ℹ️';
+            const title = $('head > title').text().trim();
+            if (!title) issues.push({ type: 'error', msg: '<title> ontbreekt of is leeg', sel: 'head > title' });
+
+            const desc = $('head meta[name="description"]').attr('content')?.trim() || '';
+            if (!desc) {
+              issues.push({ type: 'error', msg: 'meta description ontbreekt', sel: 'meta[name="description"]' });
+            } else if (desc.length < 50 || desc.length > 160) {
+              issues.push({ type: 'warning', msg: `meta description lengte ${desc.length} (aanbevolen 50–160)`, sel: 'meta[name="description"]' });
+            }
+
+            const lang = $('html').attr('lang')?.trim();
+            if (!lang) {
+              issues.push({ type: 'error', msg: '<html lang> ontbreekt', sel: 'html' });
+            } else if (!/^[a-z]{2}(-[A-Za-z]{2})?$/.test(lang)) {
+              issues.push({ type: 'warning', msg: `<html lang="${lang}"> lijkt geen gangbare taalcode`, sel: 'html' });
+            }
+
+            const viewport = $('head meta[name="viewport"]').attr('content');
+            if (!viewport) issues.push({ type: 'warning', msg: 'meta viewport ontbreekt (aanbevolen voor mobiel)', sel: 'meta[name="viewport"]' });
+
+            const imgsNoAlt = $('img:not([alt]), img[alt=""], img[alt=null]').length;
+            if (imgsNoAlt > 0) issues.push({ type: 'warning', msg: `${imgsNoAlt} <img>-element(en) zonder bruikbare alt`, sel: 'img' });
+
+            const hasCanonical = $('head link[rel="canonical"]').length > 0;
+            if (!hasCanonical) issues.push({ type: 'warning', msg: 'canonical link ontbreekt (aanbevolen)', sel: 'link[rel="canonical"]' });
+
+            return issues;
+          }
 
           (async () => {
             let failed = false;
 
             for (const file of htmlFiles) {
-              const relativePath = file.replace(new RegExp(`^${siteDir}/?`), '');
-              const url = `http://localhost:3000/${relativePath}`;
+              const rel = file.replace(new RegExp(`^${siteDir}/?`), '');
+              const url = `http://localhost:3000/${rel}`;
               console.log(`\n==========================\n🔎 Checking: ${url}\n==========================`);
 
-              // --- WCAG ---
+              // WCAG
               try {
                 const wcag = await pa11y(url, wcagConfig);
                 const e = wcag.issues.filter(i => i.type === 'error');
                 const w = wcag.issues.filter(i => i.type === 'warning');
                 const n = wcag.issues.filter(i => i.type === 'notice');
-
                 if (wcag.issues.length === 0) {
                   console.log('✅ WCAG: geen issues');
                 } else {
-                  console.log(`WCAG resultaat: ${e.length} errors, ${w.length} warnings, ${n.length} notices`);
-                  for (const i of wcag.issues) {
-                    console.log(`${iconFor(i.type)} [WCAG/${i.type}] ${i.selector} → ${i.message}`);
-                  }
-                  if (e.length > 0) failed = true; // alleen errors laten falen
+                  console.log(`WCAG: ${e.length} errors, ${w.length} warnings, ${n.length} notices`);
+                  wcag.issues.forEach(i => console.log(`${icon(i.type)} [WCAG/${i.type}] ${i.selector} → ${i.message}`));
+                  if (e.length > 0) failed = true;
                 }
               } catch (err) {
                 console.error(`❌ WCAG check crashte op ${url}:`, err.message || err);
                 failed = true;
               }
 
-              // --- SEO ---
+              // SEO
               try {
-                const seo = await pa11y(url, seoConfig);
-                const e = seo.issues.filter(i => i.type === 'error');
-                const w = seo.issues.filter(i => i.type === 'warning');
-                const n = seo.issues.filter(i => i.type === 'notice');
-
-                if (seo.issues.length === 0) {
+                const html = await fetchHtml(url);
+                const issues = seoCheck(url, html);
+                if (issues.length === 0) {
                   console.log('✅ SEO: geen issues');
                 } else {
-                  console.log(`SEO resultaat: ${e.length} errors, ${w.length} warnings, ${n.length} notices`);
-                  for (const i of seo.issues) {
-                    console.log(`${iconFor(i.type)} [SEO/${i.type}] ${i.selector} → ${i.message}`);
-                  }
-                  if (e.length > 0) failed = true; // alleen errors laten falen
+                  const e = issues.filter(i => i.type === 'error').length;
+                  const w = issues.filter(i => i.type === 'warning').length;
+                  console.log(`SEO: ${e} errors, ${w} warnings`);
+                  issues.forEach(i => console.log(`${icon(i.type)} [SEO/${i.type}] ${i.sel} → ${i.msg}`));
+                  if (e > 0) failed = true;
                 }
               } catch (err) {
                 console.error(`❌ SEO check crashte op ${url}:`, err.message || err);
@@ -153,10 +165,10 @@ jobs:
             }
 
             if (failed) {
-              console.error('\n❌ Checks klaar: er zijn errors gevonden (WCAG en/of SEO).');
+              console.error('\n❌ Checks klaar: er zijn errors (WCAG en/of SEO).');
               process.exit(1);
             } else {
-              console.log('\n✅ Alle pagina’s: geen errors in WCAG of SEO (warnings/notices kunnen nog wel bestaan).');
+              console.log('\n✅ Alle pagina’s: geen errors (warnings/notices kunnen nog bestaan).');
             }
           })();
           EOF
