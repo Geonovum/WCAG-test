@@ -1,8 +1,9 @@
-name: WCAG check and deploy to GitHub Pages
+name: WCAG + SEO check & Deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -10,20 +11,23 @@ permissions:
   id-token: write
 
 jobs:
-  wcag-and-deploy:
+  wcag-seo-deploy:
     runs-on: ubuntu-latest
+
     steps:
+      # 1) Repo
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2) Node + pa11y
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
 
-      - name: Install Puppeteer dependencies
+      - name: Install Chrome/Puppeteer deps (Ubuntu 22.04/24.04 compatible)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -38,76 +42,126 @@ jobs:
       - name: Install pa11y locally
         run: npm install pa11y
 
+      # 3) Serve de site (statisch, zonder build)
       - name: Start local server
         run: |
           npx serve -s . -l 3000 &
-          sleep 5
+          npx wait-on http://localhost:3000/index.html
 
-      - name: Run WCAG 2.1 AA check
+      # 4) Eén loop: WCAG + SEO (errors falen; warnings/notices loggen)
+      - name: Run combined WCAG 2.1 AA + SEO checks
         run: |
           node <<'EOF'
           const pa11y = require('pa11y');
           const { execSync } = require('child_process');
 
-          const siteDir = '.'; // root van repo
-
-          // Vind alle HTML-bestanden, maar negeer node_modules, dist, .next en verborgen mappen
-          const htmlFiles = execSync(`
+          const siteDir = '.'; // pas aan als jouw HTML in submap staat
+          const listCmd = `
             find "${siteDir}" -name "*.html" \
             -not -path "*/node_modules/*" \
             -not -path "*/dist/*" \
             -not -path "*/.next/*" \
             -not -path "*/.*/*"
-          `)
-            .toString()
-            .trim()
-            .split('\n')
-            .filter(Boolean);
+          `;
+
+          const htmlFiles = execSync(listCmd).toString().trim().split('\n').filter(Boolean);
+          if (htmlFiles.length === 0) {
+            console.log('ℹ️ Geen HTML-bestanden gevonden in de geselecteerde map. Controleer siteDir en uitsluitingen.');
+          }
+
+          const common = {
+            timeout: 30000,
+            chromeLaunchConfig: { args: ['--no-sandbox','--disable-setuid-sandbox'] }
+          };
+
+          // Configs
+          const wcagConfig = {
+            ...common,
+            standard: 'WCAG2AA',
+            includeWarnings: true,
+            includeNotices: true
+          };
+
+          const seoConfig = {
+            ...common,
+            // we gebruiken WCAG baseline en voegen SEO-achtige checks toe
+            standard: 'WCAG2AA',
+            includeWarnings: true,
+            includeNotices: true,
+            rules: [
+              'document-title',      // <title> aanwezig
+              'meta-description',    // <meta name="description">
+              'meta-viewport',       // viewport voor mobile
+              'html-has-lang',       // <html lang="">
+              'html-lang-valid',     // geldige taalcode
+              'image-alt',           // alt-teksten
+              'meta-refresh'         // vermijd meta refresh
+            ]
+          };
+
+          const iconFor = (t) => t === 'error' ? '🛑' : t === 'warning' ? '⚠️' : 'ℹ️';
 
           (async () => {
             let failed = false;
+
             for (const file of htmlFiles) {
               const relativePath = file.replace(new RegExp(`^${siteDir}/?`), '');
               const url = `http://localhost:3000/${relativePath}`;
-              console.log(`\n=== Checking ${url} ===`);
+              console.log(`\n==========================\n🔎 Checking: ${url}\n==========================`);
 
+              // --- WCAG ---
               try {
-                const results = await pa11y(url, {
-                  standard: 'WCAG2AA',
-                  timeout: 30000,
-                  chromeLaunchConfig: {
-                    args: ['--no-sandbox', '--disable-setuid-sandbox']
-                  }
-                });
+                const wcag = await pa11y(url, wcagConfig);
+                const e = wcag.issues.filter(i => i.type === 'error');
+                const w = wcag.issues.filter(i => i.type === 'warning');
+                const n = wcag.issues.filter(i => i.type === 'notice');
 
-                if (results.issues.length > 0) {
-                  failed = true;
-                  console.log(`\n❌ ${results.issues.length} issues found on ${url}\n`);
-                  console.log('| Type       | Selector          | Message |');
-                  console.log('|------------|-----------------|---------|');
-                  results.issues.forEach(issue => {
-                    const msg = issue.message.replace(/\|/g, '\\|');
-                    console.log(`| ${issue.type.padEnd(10)} | ${issue.selector.padEnd(15)} | ${msg} |`);
-                  });
+                if (wcag.issues.length === 0) {
+                  console.log('✅ WCAG: geen issues');
                 } else {
-                  console.log(`✅ No issues found on ${url}`);
+                  console.log(`WCAG resultaat: ${e.length} errors, ${w.length} warnings, ${n.length} notices`);
+                  for (const i of wcag.issues) {
+                    console.log(`${iconFor(i.type)} [WCAG/${i.type}] ${i.selector} → ${i.message}`);
+                  }
+                  if (e.length > 0) failed = true; // alleen errors laten falen
                 }
-
               } catch (err) {
-                console.error(`Error checking ${url}:`, err);
+                console.error(`❌ WCAG check crashte op ${url}:`, err.message || err);
+                failed = true;
+              }
+
+              // --- SEO ---
+              try {
+                const seo = await pa11y(url, seoConfig);
+                const e = seo.issues.filter(i => i.type === 'error');
+                const w = seo.issues.filter(i => i.type === 'warning');
+                const n = seo.issues.filter(i => i.type === 'notice');
+
+                if (seo.issues.length === 0) {
+                  console.log('✅ SEO: geen issues');
+                } else {
+                  console.log(`SEO resultaat: ${e.length} errors, ${w.length} warnings, ${n.length} notices`);
+                  for (const i of seo.issues) {
+                    console.log(`${iconFor(i.type)} [SEO/${i.type}] ${i.selector} → ${i.message}`);
+                  }
+                  if (e.length > 0) failed = true; // alleen errors laten falen
+                }
+              } catch (err) {
+                console.error(`❌ SEO check crashte op ${url}:`, err.message || err);
                 failed = true;
               }
             }
 
             if (failed) {
-              console.error("\n❌ WCAG check failed for one or more pages.");
+              console.error('\n❌ Checks klaar: er zijn errors gevonden (WCAG en/of SEO).');
               process.exit(1);
             } else {
-              console.log("\n✅ All pages passed WCAG checks.");
+              console.log('\n✅ Alle pagina’s: geen errors in WCAG of SEO (warnings/notices kunnen nog wel bestaan).');
             }
           })();
           EOF
 
+      # 5) Deploy naar gh-pages (publiceert de map . — pas aan indien submap)
       - name: Deploy to GitHub Pages
         if: ${{ success() }}
         uses: peaceiris/actions-gh-pages@v4
