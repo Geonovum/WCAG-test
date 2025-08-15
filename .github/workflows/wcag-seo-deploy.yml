@@ -1,4 +1,4 @@
-name: WCAG + SEO check & Deploy to GitHub Pages
+name: WCAG-SEO-deploy to GitHub Pages
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # 2) Node + pa11y
+      # 2) Node, pa11y, cheerio
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -48,7 +48,7 @@ jobs:
           npx serve -s . -l 3000 &
           npx wait-on http://localhost:3000/index.html
 
-      # 4) Eén loop: WCAG + SEO (errors falen; warnings/notices loggen)
+      # 4) Eén loop: WCAG-SEO (errors falen; warnings/notices loggen)
       - name: Run combined WCAG 2.1 AA + SEO checks
         run: |
           node <<'EOF'
